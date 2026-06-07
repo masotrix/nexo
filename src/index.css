@@ -1,0 +1,204 @@
+/* Base CSS design system for Nexo - Nodos de Lectura Atómica */
+
+:root {
+  font-family: 'Inter', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  --bg-main: #060913;
+  --bg-surface: rgba(13, 20, 38, 0.6);
+  --bg-surface-hover: rgba(22, 32, 59, 0.8);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-color-hover: rgba(255, 255, 255, 0.15);
+  
+  --primary: #8b5cf6;
+  --primary-glow: rgba(139, 92, 246, 0.3);
+  --secondary: #10b981;
+  --secondary-glow: rgba(16, 185, 129, 0.3);
+  --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.3);
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  --glass-blur: blur(16px);
+  --glow-shadow: 0 0 25px var(--primary-glow);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--bg-main);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.05) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(16, 185, 129, 0.02) 0px, transparent 50%);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+}
+
+/* Typography override for Headings */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Buttons and Controls */
+button {
+  font-family: inherit;
+  font-weight: 500;
+  font-size: 0.9rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-color-hover);
+  transform: translateY(-1px);
+}
+
+button.primary {
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  border: none;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+button.primary:hover {
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+button.primary:disabled {
+  background: var(--text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Glassmorphism Panel styles */
+.glass-panel {
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+/* Input elements */
+input[type="text"], input[type="password"], textarea, select {
+  font-family: inherit;
+  font-size: 0.95rem;
+  background: rgba(13, 20, 38, 0.5);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.15);
+  background: rgba(22, 32, 59, 0.7);
+}
+
+/* D3 Graph styling classes */
+.node {
+  cursor: pointer;
+  transition: r 0.2s ease, filter 0.2s ease;
+}
+
+.node:hover {
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.link {
+  stroke-opacity: 0.25;
+  transition: stroke-opacity 0.2s ease, stroke-width 0.2s ease;
+}
+
+.link.highlighted {
+  stroke-opacity: 0.7;
+  stroke-width: 2.5px;
+}
+
+.node.dimmed, .link.dimmed {
+  opacity: 0.15;
+}
+
+.node.highlighted {
+  filter: drop-shadow(0 0 12px currentColor);
+}
+
+/* Custom CSS animations */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+  }
+  70% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 10px rgba(139, 92, 246, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+.glowing-element {
+  animation: pulse 2s infinite;
+}
