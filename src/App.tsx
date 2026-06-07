@@ -17,6 +17,88 @@ import {
 } from "lucide-react";
 
 
+import styled from "styled-components";
+
+const StyledMobileNavBar = styled.div`
+  display: none;
+
+  @media (max-width: 768px) {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    position: fixed;
+    bottom: 12px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    z-index: 1000;
+    box-sizing: border-box;
+    background: rgba(13, 20, 38, 0.98);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    padding: 6px 4px;
+  }
+`;
+
+const StyledNavButton = styled.button<{ $active?: boolean; $mobileOnly?: boolean }>`
+  flex: 1;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: ${props => props.$active ? "var(--primary)" : "var(--text-secondary)"};
+  background-color: ${props => props.$active ? "rgba(139, 92, 246, 0.15)" : "transparent"};
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  box-sizing: border-box;
+
+  &:hover {
+    background-color: ${props => props.$active ? "rgba(139, 92, 246, 0.15)" : "rgba(255, 255, 255, 0.03)"};
+  }
+
+  display: ${props => props.$mobileOnly ? "none" : "inline-flex"};
+
+  span {
+    font-size: 13px;
+    font-weight: bold;
+  }
+
+  @media (max-width: 768px) {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 2px;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+    background-color: ${props => props.$active ? "rgba(139, 92, 246, 0.15)" : "transparent"};
+
+    display: inline-flex;
+
+    span {
+      font-size: 10px;
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      margin-left: 0;
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+  }
+`;
+
 // Instantiate services once outside the component
 const driveService = new GoogleDriveService();
 const embeddingsService = new EmbeddingsService();
@@ -130,8 +212,11 @@ export const App: React.FC = () => {
     try {
       const dateStr = selectedNoteToEdit ? selectedNoteToEdit.date : new Date().toISOString();
       const noteId = selectedNoteToEdit ? selectedNoteToEdit.id : null;
+      
+      // Generate temporary ID if creating a new note
+      const tempId = noteId || `temp_${Date.now()}`;
 
-      // 1. Fetch note embedding vector locally
+      // 1. Fetch note embedding vector locally (extremely fast, ~10-40ms)
       const embedding = await embeddingsService.getEmbedding(title, content);
 
       // 2. Local cosine similarity search against other notes
@@ -153,16 +238,10 @@ export const App: React.FC = () => {
       // Merge auto connections and any manual ones
       const finalConnections = Array.from(new Set([...autoConnections, ...precalcConnections]));
 
-      // 3. Save actual Markdown file in Google Drive
-      const savedFileId = await driveService.saveNoteFile(
-        noteId, 
-        title, 
-        content, 
-        dateStr, 
-        finalConnections
-      );
+      // 3. Cache content in memory immediately so NoteDetails can render it instantly
+      driveService.cacheContent(tempId, { title, date: dateStr, content });
 
-      // 4. Update local metadata copy
+      // 4. Update local metadata copy optimistically
       const updatedNotes = { ...index.notes };
       
       // Remove old references to this note ID in other notes' connections lists (if editing)
@@ -176,8 +255,8 @@ export const App: React.FC = () => {
       }
 
       // Add the new note metadata entry
-      updatedNotes[savedFileId] = {
-        id: savedFileId,
+      updatedNotes[tempId] = {
+        id: tempId,
         title,
         date: dateStr,
         connections: finalConnections,
@@ -190,7 +269,7 @@ export const App: React.FC = () => {
         if (updatedNotes[connId]) {
           updatedNotes[connId] = {
             ...updatedNotes[connId],
-            connections: Array.from(new Set([...updatedNotes[connId].connections, savedFileId]))
+            connections: Array.from(new Set([...updatedNotes[connId].connections, tempId]))
           };
         }
       });
@@ -198,25 +277,90 @@ export const App: React.FC = () => {
       // 5. Cluster assignments recalculation
       const updatedNotesWithClusters = recalculateClusters(updatedNotes);
 
-      // 6. Write final metadata.json index back to Google Drive
       const updatedIndex: GraphIndex = {
         notes: updatedNotesWithClusters,
         similarityThreshold: threshold,
         clusters: {}
       };
 
-      await driveService.saveIndex(updatedIndex);
-
-      // 7. Update State
+      // 6. Update local UI State INSTANTLY
       setIndex(updatedIndex);
       setSelectedNoteToEdit(null);
-      setSelectedNoteId(savedFileId); // Focus newly created note
+      setSelectedNoteId(tempId); // Focus note immediately
       setActiveTab("details");
+      setIsSaving(false); // Done saving from UI perspective!
+
+      // 7. Perform Google Drive saving calls in the background (non-blocking)
+      (async () => {
+        try {
+          const savedFileId = await driveService.saveNoteFile(
+            noteId, 
+            title, 
+            content, 
+            dateStr, 
+            finalConnections
+          );
+
+          // If creating a new note, swap the temporary ID with the real Google Drive File ID
+          if (!noteId && savedFileId !== tempId) {
+            // Cache the content under the real ID as well
+            driveService.cacheContent(savedFileId, { title, date: dateStr, content });
+
+            setIndex(prevIndex => {
+              const notesCopy = { ...prevIndex.notes };
+              const tempNote = notesCopy[tempId];
+              if (!tempNote) return prevIndex; // already modified/removed by user in UI
+
+              // Remove temp note entry
+              delete notesCopy[tempId];
+
+              // Add under real ID
+              notesCopy[savedFileId] = {
+                ...tempNote,
+                id: savedFileId
+              };
+
+              // Update connections pointing to tempId in other notes
+              for (const id in notesCopy) {
+                notesCopy[id] = {
+                  ...notesCopy[id],
+                  connections: notesCopy[id].connections.map(c => c === tempId ? savedFileId : c)
+                };
+              }
+
+              const cleanNotesWithClusters = recalculateClusters(notesCopy);
+              
+              const newIndex: GraphIndex = {
+                notes: cleanNotesWithClusters,
+                similarityThreshold: prevIndex.similarityThreshold,
+                clusters: prevIndex.clusters
+              };
+
+              // Save the updated index containing the real ID to Google Drive
+              driveService.saveIndex(newIndex).catch(err => {
+                console.error("Error saving metadata index in background:", err);
+              });
+
+              return newIndex;
+            });
+
+            // If user is currently inspecting the temp note, swap selection to real ID
+            setSelectedNoteId(currentId => currentId === tempId ? savedFileId : currentId);
+          } else {
+            // For updates, the ID is already real, so we just save the index
+            await driveService.saveIndex(updatedIndex);
+          }
+        } catch (err: any) {
+          console.error("Background sync to Google Drive failed:", err);
+          setAppError("Sincronización en la nube fallida. Los cambios están guardados en tu sesión local.");
+          setTimeout(() => setAppError(null), 5000);
+        }
+      })();
+
     } catch (err: any) {
-      setAppError(err.message || "Error al guardar la nota.");
-      throw err;
-    } finally {
+      setAppError(err.message || "Error al procesar la nota.");
       setIsSaving(false);
+      throw err;
     }
   };
 
@@ -351,69 +495,64 @@ export const App: React.FC = () => {
 
   const renderNavButtons = () => (
     <>
-      <button 
-        className="mobile-only-tab"
+      <StyledNavButton 
+        $active={activeTab === "graph"}
+        $mobileOnly={true}
         onClick={() => setActiveTab("graph")}
-        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "graph" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "graph" ? "var(--primary)" : "var(--text-secondary)" }}
         title="Ver Grafo"
       >
         <Network size={18} />
-        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Grafo</span>
-      </button>
+        <span>Grafo</span>
+      </StyledNavButton>
 
-      <button 
+      <StyledNavButton 
+        $active={activeTab === "capture"}
         onClick={() => { setActiveTab("capture"); setSelectedNoteToEdit(null); }}
-        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "capture" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "capture" ? "var(--primary)" : "var(--text-secondary)" }}
         title="Capturar nota"
       >
         <PenTool size={18} />
-        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Captura</span>
-      </button>
+        <span>Captura</span>
+      </StyledNavButton>
 
-      <button 
+      <StyledNavButton 
+        $active={activeTab === "details"}
         onClick={() => setActiveTab("details")}
-        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "details" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "details" ? "var(--primary)" : "var(--text-secondary)" }}
         title="Detalle de Nota"
       >
         <BookOpen size={18} />
-        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Detalle</span>
-      </button>
+        <span>Detalle</span>
+      </StyledNavButton>
 
-      <button 
+      <StyledNavButton 
+        $active={activeTab === "stats"}
         onClick={() => setActiveTab("stats")}
-        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "stats" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "stats" ? "var(--primary)" : "var(--text-secondary)" }}
         title="Progreso y Clústeres"
       >
         <BarChart3 size={18} />
-        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Progreso</span>
-      </button>
+        <span>Progreso</span>
+      </StyledNavButton>
 
-      <button 
+      <StyledNavButton 
+        $active={activeTab === "settings"}
         onClick={() => setActiveTab("settings")}
-        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "settings" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "settings" ? "var(--primary)" : "var(--text-secondary)" }}
         title="Configuración"
       >
         <SettingsIcon size={18} />
-        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Ajustes</span>
-      </button>
+        <span>Ajustes</span>
+      </StyledNavButton>
     </>
   );
 
   return (
-    <div style={{ display: "flex", width: "100%", height: "100%", position: "relative" }}>
+    <div style={{ display: "flex", width: "100%", height: "100%", position: "relative", overflow: "hidden" }}>
       
       {/* Visual background layout glow elements */}
-      <div style={{ pointerEvents: "none", position: "absolute", top: "10%", left: "20%", width: "400px", height: "400px", borderRadius: "50%", background: "radial-gradient(circle, rgba(139, 92, 246, 0.04) 0%, transparent 70%)" }} />
-      <div style={{ pointerEvents: "none", position: "absolute", bottom: "10%", right: "30%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16, 185, 129, 0.03) 0%, transparent 70%)" }} />
+      <div className="bg-glow-1" />
+      <div className="bg-glow-2" />
 
       {/* Main layout container (Split View) */}
       <div className="main-layout">
         
-        {/* Navigation Bar (Mobile only) */}
-        <div className="mobile-nav-bar glass-panel" style={{ padding: "0.5rem" }}>
-          {renderNavButtons()}
-        </div>
-
         {/* Left Side: Graph Visualization */}
         <div className={`graph-section ${activeTab === 'graph' ? 'active-mobile-view' : ''}`}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -448,7 +587,7 @@ export const App: React.FC = () => {
         <div className={`sidebar-section ${activeTab !== 'graph' ? 'active-mobile-view' : ''}`}>
           
           {/* Navigation Bar (Desktop only) */}
-          <div className="desktop-nav-bar glass-panel" style={{ padding: "0.5rem", borderRadius: "12px", display: "flex", justifyContent: "space-between", gap: "0.4rem" }}>
+          <div className="desktop-nav-bar glass-panel" style={{ padding: "0.5rem", borderRadius: "12px", justifyContent: "space-between", gap: "0.4rem" }}>
             {renderNavButtons()}
           </div>
 
@@ -521,6 +660,11 @@ export const App: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Navigation Bar (Mobile only) */}
+      <StyledMobileNavBar>
+        {renderNavButtons()}
+      </StyledMobileNavBar>
     </div>
   );
 };

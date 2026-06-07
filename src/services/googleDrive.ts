@@ -22,6 +22,11 @@ export class GoogleDriveService {
   private tokenExpiry: number = 0; // Timestamp in ms
   private clientId: string = "";
   private folderId: string | null = null;
+  private contentCache = new Map<string, { title: string; date: string; content: string }>();
+
+  public cacheContent(fileId: string, data: { title: string; date: string; content: string }) {
+    this.contentCache.set(fileId, data);
+  }
 
   constructor() {
     // Load config and existing session from localStorage
@@ -319,6 +324,7 @@ export class GoogleDriveService {
           body: yamlFrontmatter,
         }
       );
+      this.contentCache.set(fileId, { title, date, content });
       return fileId;
     } else {
       // Create new multipart file
@@ -348,6 +354,7 @@ export class GoogleDriveService {
           body: requestBody,
         }
       );
+      this.contentCache.set(response.id, { title, date, content });
       return response.id;
     }
   }
@@ -364,6 +371,10 @@ export class GoogleDriveService {
 
   // Load note content (extract markdown body from YAML frontmatter)
   public async readNoteFile(fileId: string): Promise<{ title: string; date: string; content: string }> {
+    if (this.contentCache.has(fileId)) {
+      return this.contentCache.get(fileId)!;
+    }
+
     const rawContent: string = await this.driveFetch(
       `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
     );
@@ -386,9 +397,13 @@ export class GoogleDriveService {
       const dateMatch = frontmatter.match(/date:\s*"(.*?)"/);
       if (dateMatch) date = dateMatch[1];
 
-      return { title, date, content };
+      const result = { title, date, content };
+      this.contentCache.set(fileId, result);
+      return result;
     }
 
-    return { title: "", date: "", content: rawContent.trim() };
+    const result = { title: "", date: "", content: rawContent.trim() };
+    this.contentCache.set(fileId, result);
+    return result;
   }
 }

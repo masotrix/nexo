@@ -38,13 +38,32 @@ export const NoteForm: React.FC<NoteFormProps> = ({
     if (selectedNoteToEdit) {
       setTitle(selectedNoteToEdit.title);
       setContent(selectedNoteToEdit.content);
-      setPreviewConnections([]);
+      
+      // Load current connections as initial preview connections
+      const currentNote = index.notes[selectedNoteToEdit.id];
+      if (currentNote && currentNote.connections) {
+        const currentEmbedding = (currentNote as any).embedding;
+        const initialPreviews = currentNote.connections.map(connId => {
+          const connNote = index.notes[connId];
+          let similarity = 0.8; // fallback
+          if (connNote && currentEmbedding && (connNote as any).embedding) {
+            similarity = EmbeddingsService.cosineSimilarity(currentEmbedding, (connNote as any).embedding);
+          }
+          return { note: connNote, similarity };
+        }).filter(item => item.note !== undefined);
+
+        // Sort by similarity descending
+        initialPreviews.sort((a, b) => b.similarity - a.similarity);
+        setPreviewConnections(initialPreviews);
+      } else {
+        setPreviewConnections([]);
+      }
     } else {
       setTitle("");
       setContent("");
       setPreviewConnections([]);
     }
-  }, [selectedNoteToEdit]);
+  }, [selectedNoteToEdit, index.notes]);
 
   // Update line counts on content change
   useEffect(() => {
@@ -190,7 +209,7 @@ export const NoteForm: React.FC<NoteFormProps> = ({
         </div>
 
         {/* Action buttons */}
-        <div style={{ display: "flex", gap: "0.8rem", marginTop: "0.5rem" }}>
+        <div className="form-actions">
           {selectedNoteToEdit && onCancelEdit && (
             <button 
               type="button" 

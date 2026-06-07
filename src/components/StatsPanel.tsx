@@ -57,7 +57,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({
       </div>
 
       {/* Grid of stats cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.8rem" }}>
+      <div className="stats-grid">
         <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border-color)", borderRadius: "10px", padding: "0.8rem", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
           <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "0.3rem" }}>
             <Database size={12} /> Total Nodos

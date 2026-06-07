@@ -101,7 +101,7 @@ export const Settings: React.FC<SettingsProps> = ({
           </span>
         </div>
 
-        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+        <div className="settings-actions">
           <button type="submit" className="primary" style={{ flex: 1 }}>
             Guardar Configuración
           </button>

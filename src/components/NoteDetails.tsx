@@ -60,7 +60,7 @@ export const NoteDetails: React.FC<NoteDetailsProps> = ({
     return () => {
       active = false;
     };
-  }, [noteId, driveService]);
+  }, [noteId, driveService, notesIndex[noteId]]);
 
   if (!noteMeta) {
     return (
@@ -205,7 +205,7 @@ export const NoteDetails: React.FC<NoteDetailsProps> = ({
           </div>
 
           {/* Action buttons (Edit / Delete) */}
-          <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem", display: "flex", gap: "0.8rem", marginTop: "0.5rem" }}>
+          <div className="detail-actions" style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem", marginTop: "0.5rem" }}>
             <button 
               onClick={() => onEditNote({ id: noteId, title: noteMeta.title, content, date: noteMeta.date })}
               style={{ flex: 1, display: "flex", gap: "0.4rem" }}
@@ -248,7 +248,7 @@ export const NoteDetails: React.FC<NoteDetailsProps> = ({
           <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
             Esto eliminará permanentemente el archivo Markdown de tu Google Drive y desconectará sus enlaces en el grafo.
           </p>
-          <div style={{ display: "flex", gap: "0.8rem", width: "100%", marginTop: "0.5rem" }}>
+          <div className="detail-actions" style={{ width: "100%", marginTop: "0.5rem" }}>
             <button 
               onClick={() => setShowDeleteConfirm(false)} 
               disabled={isDeleting}

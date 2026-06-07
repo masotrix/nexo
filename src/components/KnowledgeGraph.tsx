@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { NoteMetadata } from "../services/googleDrive";
+import { EmbeddingsService } from "../services/embeddings";
 import { Maximize2, ZoomIn, ZoomOut, Compass } from "lucide-react";
 
 // D3 internal node and link types
@@ -181,12 +182,51 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       .style("font-family", "Inter, sans-serif")
       .style("transition", "opacity 0.2s ease");
 
-    // 5. Force Simulation Setup
+     // 5. Force Simulation Setup
     const simulation = d3.forceSimulation<GraphNode>(d3Nodes)
-      .force("link", d3.forceLink<GraphNode, GraphLink>(d3Links).id(d => d.id).distance(90))
+      .force("link", d3.forceLink<GraphNode, GraphLink>(d3Links)
+        .id(d => d.id)
+        .distance((link) => {
+          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
+          const targetId = typeof link.target === "object" ? link.target.id : link.target;
+          
+          const noteA = notes[sourceId];
+          const noteB = notes[targetId];
+          
+          if (noteA && noteB && (noteA as any).embedding && (noteB as any).embedding) {
+            const sim = EmbeddingsService.cosineSimilarity((noteA as any).embedding, (noteB as any).embedding);
+            // Sim is typically between threshold (e.g. 0.65) and 1.0.
+            // distance = 40 + (1 - sim) * 300
+            return 40 + (1 - sim) * 300;
+          }
+          return 90; // Fallback
+        })
+      )
       .force("charge", d3.forceManyBody().strength(-120))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide().radius(22));
+      .force("collide", d3.forceCollide().radius(22))
+      .force("x", d3.forceX<GraphNode>()
+        .x((d) => {
+          if (!d.clusterId) return width / 2;
+          const idx = uniqueClusters.indexOf(d.clusterId);
+          if (idx === -1) return width / 2;
+          const angle = (2 * Math.PI * idx) / uniqueClusters.length;
+          const radius = Math.min(width, height) * 0.25;
+          return width / 2 + radius * Math.cos(angle);
+        })
+        .strength(0.12)
+      )
+      .force("y", d3.forceY<GraphNode>()
+        .y((d) => {
+          if (!d.clusterId) return height / 2;
+          const idx = uniqueClusters.indexOf(d.clusterId);
+          if (idx === -1) return height / 2;
+          const angle = (2 * Math.PI * idx) / uniqueClusters.length;
+          const radius = Math.min(width, height) * 0.25;
+          return height / 2 + radius * Math.sin(angle);
+        })
+        .strength(0.12)
+      );
 
     // Freeze physics after simulation converges (performance optimization)
     simulation.alphaMin(0.02); // converge faster
