@@ -255,13 +255,29 @@ input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:f
     overflow: hidden;
   }
 
-  .graph-section, .sidebar-section {
+  .graph-section {
     display: none !important;
     width: 100% !important;
     max-width: none !important;
     min-width: 0 !important;
     height: 100% !important;
     flex: 1 !important;
+  }
+
+  .sidebar-section {
+    display: none !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    flex: 1 !important;
+    overflow-y: auto !important;
+    padding-bottom: 5.5rem !important; /* Extra padding so the bottom button is visible above mobile navbar */
+  }
+
+  .sidebar-section .glass-panel {
+    height: auto !important;
+    overflow-y: visible !important;
   }
 
   .graph-section.active-mobile-view, .sidebar-section.active-mobile-view {
