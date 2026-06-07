@@ -25,7 +25,8 @@ export class GoogleDriveService {
 
   constructor() {
     // Load config and existing session from localStorage
-    this.clientId = localStorage.getItem("nexo_google_client_id") || "";
+    //this.clientId = localStorage.getItem("nexo_google_client_id") || "";
+    this.clientId = '804370913602-0usktvrnitnpd9jf9a1pd6hj6bhdt5oo.apps.googleusercontent.com'
     this.accessToken = localStorage.getItem("nexo_google_access_token");
     this.tokenExpiry = parseInt(localStorage.getItem("nexo_google_token_expiry") || "0", 10);
     this.folderId = localStorage.getItem("nexo_google_folder_id");
