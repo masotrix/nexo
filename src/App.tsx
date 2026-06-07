@@ -33,7 +33,7 @@ export const App: React.FC = () => {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<"capture" | "details" | "stats" | "settings">("settings");
+  const [activeTab, setActiveTab] = useState<"graph" | "capture" | "details" | "stats" | "settings">("settings");
   
   // Loading & Processing States
   const [isLoading, setIsLoading] = useState(false);
@@ -349,6 +349,56 @@ export const App: React.FC = () => {
     setActiveTab("capture");
   };
 
+  const renderNavButtons = () => (
+    <>
+      <button 
+        className="mobile-only-tab"
+        onClick={() => setActiveTab("graph")}
+        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "graph" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "graph" ? "var(--primary)" : "var(--text-secondary)" }}
+        title="Ver Grafo"
+      >
+        <Network size={18} />
+        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Grafo</span>
+      </button>
+
+      <button 
+        onClick={() => { setActiveTab("capture"); setSelectedNoteToEdit(null); }}
+        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "capture" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "capture" ? "var(--primary)" : "var(--text-secondary)" }}
+        title="Capturar nota"
+      >
+        <PenTool size={18} />
+        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Captura</span>
+      </button>
+
+      <button 
+        onClick={() => setActiveTab("details")}
+        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "details" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "details" ? "var(--primary)" : "var(--text-secondary)" }}
+        title="Detalle de Nota"
+      >
+        <BookOpen size={18} />
+        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Detalle</span>
+      </button>
+
+      <button 
+        onClick={() => setActiveTab("stats")}
+        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "stats" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "stats" ? "var(--primary)" : "var(--text-secondary)" }}
+        title="Progreso y Clústeres"
+      >
+        <BarChart3 size={18} />
+        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Progreso</span>
+      </button>
+
+      <button 
+        onClick={() => setActiveTab("settings")}
+        style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "settings" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "settings" ? "var(--primary)" : "var(--text-secondary)" }}
+        title="Configuración"
+      >
+        <SettingsIcon size={18} />
+        <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Ajustes</span>
+      </button>
+    </>
+  );
+
   return (
     <div style={{ display: "flex", width: "100%", height: "100%", position: "relative" }}>
       
@@ -357,10 +407,15 @@ export const App: React.FC = () => {
       <div style={{ pointerEvents: "none", position: "absolute", bottom: "10%", right: "30%", width: "500px", height: "500px", borderRadius: "50%", background: "radial-gradient(circle, rgba(16, 185, 129, 0.03) 0%, transparent 70%)" }} />
 
       {/* Main layout container (Split View) */}
-      <div style={{ display: "flex", width: "100%", height: "100%", padding: "1.5rem", gap: "1.5rem" }}>
+      <div className="main-layout">
         
+        {/* Navigation Bar (Mobile only) */}
+        <div className="mobile-nav-bar glass-panel" style={{ padding: "0.5rem" }}>
+          {renderNavButtons()}
+        </div>
+
         {/* Left Side: Graph Visualization */}
-        <div style={{ flex: 1.6, display: "flex", flexDirection: "column", gap: "1rem", height: "100%" }}>
+        <div className={`graph-section ${activeTab === 'graph' ? 'active-mobile-view' : ''}`}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Network size={28} style={{ color: "var(--primary)" }} />
@@ -390,45 +445,11 @@ export const App: React.FC = () => {
         </div>
 
         {/* Right Side: Sidebar Panels & Navigation Tabs */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "1rem", height: "100%", maxWidth: "520px", minWidth: "380px" }}>
+        <div className={`sidebar-section ${activeTab !== 'graph' ? 'active-mobile-view' : ''}`}>
           
-          {/* Navigation Bar */}
-          <div className="glass-panel" style={{ padding: "0.5rem", borderRadius: "12px", display: "flex", justifyContent: "space-between", gap: "0.4rem" }}>
-            <button 
-              onClick={() => { setActiveTab("capture"); setSelectedNoteToEdit(null); }}
-              style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "capture" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "capture" ? "var(--primary)" : "var(--text-secondary)" }}
-              title="Capturar nota"
-            >
-              <PenTool size={18} />
-              <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Captura</span>
-            </button>
-
-            <button 
-              onClick={() => setActiveTab("details")}
-              style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "details" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "details" ? "var(--primary)" : "var(--text-secondary)" }}
-              title="Detalle de Nota"
-            >
-              <BookOpen size={18} />
-              <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Detalle</span>
-            </button>
-
-            <button 
-              onClick={() => setActiveTab("stats")}
-              style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "stats" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "stats" ? "var(--primary)" : "var(--text-secondary)" }}
-              title="Progreso y Clústeres"
-            >
-              <BarChart3 size={18} />
-              <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Progreso</span>
-            </button>
-
-            <button 
-              onClick={() => setActiveTab("settings")}
-              style={{ flex: 1, padding: "0.5rem", borderRadius: "8px", border: "none", background: activeTab === "settings" ? "rgba(139, 92, 246, 0.15)" : "transparent", color: activeTab === "settings" ? "var(--primary)" : "var(--text-secondary)" }}
-              title="Configuración"
-            >
-              <SettingsIcon size={18} />
-              <span style={{ fontSize: "0.75rem", fontWeight: "bold", marginLeft: "0.3rem" }}>Ajustes</span>
-            </button>
+          {/* Navigation Bar (Desktop only) */}
+          <div className="desktop-nav-bar glass-panel" style={{ padding: "0.5rem", borderRadius: "12px", display: "flex", justifyContent: "space-between", gap: "0.4rem" }}>
+            {renderNavButtons()}
           </div>
 
           {/* Configuration Warnings / Status updates */}
