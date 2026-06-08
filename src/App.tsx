@@ -582,6 +582,8 @@ export const App: React.FC = () => {
                 selectedNoteId={selectedNoteId}
                 onSelectNote={handleSelectNoteFromGraph}
                 clusters={index.clusters}
+                onRebuildGraph={isAuthenticated && hasConfig ? handleRebuildGraph : undefined}
+                isRebuilding={isRebuilding}
               />
             )}
           </div>
@@ -657,8 +659,6 @@ export const App: React.FC = () => {
               <Settings 
                 driveService={driveService}
                 onConfigChanged={handleConfigChanged}
-                onRebuildGraph={handleRebuildGraph}
-                isRebuilding={isRebuilding}
               />
             )}
           </div>

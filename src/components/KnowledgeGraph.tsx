@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { NoteMetadata } from "../services/googleDrive";
 import { EmbeddingsService } from "../services/embeddings";
-import { Maximize2, ZoomIn, ZoomOut, Compass } from "lucide-react";
+import { Maximize2, ZoomIn, ZoomOut, Compass, RefreshCw } from "lucide-react";
 
 // D3 internal node and link types
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -22,6 +22,8 @@ interface KnowledgeGraphProps {
   selectedNoteId: string | null;
   onSelectNote: (noteId: string | null) => void;
   clusters?: { [clusterId: string]: string };
+  onRebuildGraph?: () => Promise<void>;
+  isRebuilding?: boolean;
 }
 
 // A beautiful palette of 10 bright neon colors suitable for dark mode
@@ -43,6 +45,8 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   selectedNoteId,
   onSelectNote,
   clusters = {},
+  onRebuildGraph,
+  isRebuilding = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -436,6 +440,19 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
 
           {/* Graph visual controls floating in bottom right */}
           <div style={{ position: "absolute", bottom: "1rem", right: "1rem", display: "flex", gap: "0.5rem" }}>
+            {onRebuildGraph && (
+              <button 
+                onClick={onRebuildGraph} 
+                disabled={isRebuilding}
+                title="Reconstruir grafo completo"
+                style={{ padding: "0.5rem", borderRadius: "8px", background: "rgba(13, 20, 38, 0.8)", display: "flex", alignItems: "center", gap: "0.3rem" }}
+              >
+                <RefreshCw size={16} className={isRebuilding ? "animate-spin" : ""} />
+                <span style={{ fontSize: "0.75rem", fontWeight: "bold" }}>
+                  {isRebuilding ? "Reconstruyendo..." : "Reconstruir"}
+                </span>
+              </button>
+            )}
             <button 
               onClick={() => handleZoom(1.3)} 
               title="Acercar"
