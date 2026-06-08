@@ -601,7 +601,7 @@ export const App: React.FC = () => {
               <h1 style={{ fontSize: "1.8rem", background: "linear-gradient(135deg, #f8fafc, #94a3b8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                 Nexo
               </h1>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.03)", padding: "0.2rem 0.6rem", borderRadius: "20px", border: "1px solid var(--border-color)" }}>
+              <span className="header-tag" style={{ fontSize: "0.8rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.03)", padding: "0.2rem 0.6rem", borderRadius: "20px", border: "1px solid var(--border-color)" }}>
                 Nodos de Lectura Atómica
               </span>
             </div>

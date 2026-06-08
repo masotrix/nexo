@@ -328,6 +328,10 @@ input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:f
     font-size: 14px;
   }
 
+  .header-tag {
+    display: none;
+  }
+
   .main-layout {
     flex-direction: column;
     padding: 0.75rem;
