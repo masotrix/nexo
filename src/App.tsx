@@ -644,6 +644,7 @@ export const App: React.FC = () => {
             {activeTab === "stats" && (
               <StatsPanel 
                 index={index} 
+                driveService={driveService}
                 onSelectNote={handleSelectNoteFromGraph}
               />
             )}
