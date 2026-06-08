@@ -249,75 +249,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       // Simulation finished, nodes settled.
     });
 
-    // 6. Highlight logic on hover/click
-    const updateHighlights = () => {
-      const activeId = selectedNoteId || hoveredNodeId;
-
-      if (!activeId) {
-        // Reset all
-        nodes.selectAll("circle")
-          .attr("r", 8)
-          .style("filter", "none")
-          .style("opacity", 1);
-        nodes.selectAll("text")
-          .style("opacity", () => {
-            // Keep labels visible for highly connected nodes or on zoom,
-            // otherwise hide. For simplicity, hide all except active or zoom.
-            return 0;
-          });
-        links
-          .attr("stroke", "#ffffff")
-          .attr("stroke-opacity", 0.15)
-          .attr("stroke-width", 1.5);
-        return;
-      }
-
-      // Find connected nodes
-      const connectedNodeIds = new Set<string>();
-      connectedNodeIds.add(activeId);
-      
-      d3Links.forEach(link => {
-        const sourceId = typeof link.source === "object" ? link.source.id : link.source;
-        const targetId = typeof link.target === "object" ? link.target.id : link.target;
-        
-        if (sourceId === activeId) connectedNodeIds.add(targetId);
-        if (targetId === activeId) connectedNodeIds.add(sourceId);
-      });
-
-      // Update Node highlights
-      nodes.selectAll("circle")
-        .attr("r", (d: any) => d.id === activeId ? 11 : connectedNodeIds.has(d.id) ? 9 : 6)
-        .style("opacity", (d: any) => connectedNodeIds.has(d.id) ? 1 : 0.2)
-        .style("filter", (d: any) => d.id === activeId ? "url(#glow)" : "none");
-
-      // Show labels for connected nodes
-      nodes.selectAll("text")
-        .style("opacity", (d: any) => connectedNodeIds.has(d.id) ? 1 : 0)
-        .attr("fill", (d: any) => d.id === activeId ? "var(--text-primary)" : "var(--text-secondary)");
-
-      // Update Link highlights
-      links
-        .attr("stroke", (d: any) => {
-          const sId = d.source.id;
-          const tId = d.target.id;
-          if (sId === activeId || tId === activeId) {
-            // Color edge by active node cluster color
-            return notes[activeId]?.clusterId ? getClusterColor(notes[activeId].clusterId) : "var(--primary)";
-          }
-          return "#ffffff";
-        })
-        .attr("stroke-opacity", (d: any) => {
-          const sId = d.source.id;
-          const tId = d.target.id;
-          return (sId === activeId || tId === activeId) ? 0.8 : 0.03;
-        })
-        .attr("stroke-width", (d: any) => {
-          const sId = d.source.id;
-          const tId = d.target.id;
-          return (sId === activeId || tId === activeId) ? 2.5 : 1.2;
-        });
-    };
-
     // Node click and hover interactions
     nodes.on("click", (event, d) => {
       event.stopPropagation();
@@ -336,9 +267,6 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     svg.on("click", () => {
       onSelectNote(null);
     });
-
-    // Run layout adjustments
-    updateHighlights();
 
     // Drag handlers
     function dragstarted(event: d3.D3DragEvent<SVGGElement, GraphNode, GraphNode>, d: GraphNode) {
@@ -362,7 +290,89 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     return () => {
       simulation.stop();
     };
-  }, [notes, dimensions, selectedNoteId, hoveredNodeId]);
+  }, [notes, dimensions]);
+
+  // Highlight and styling updates on select/hover
+  useEffect(() => {
+    if (!svgRef.current || Object.keys(notes).length === 0) return;
+
+    const svg = d3.select(svgRef.current);
+    const activeId = selectedNoteId || hoveredNodeId;
+
+    const nodes = svg.selectAll<SVGGElement, GraphNode>(".node-group");
+    const links = svg.selectAll<SVGLineElement, GraphLink>(".link");
+
+    // Map cluster IDs to color indexes
+    const uniqueClusters = Array.from(
+      new Set(Object.values(notes).map((n) => n.clusterId).filter(Boolean))
+    );
+    const getClusterColor = (clusterId?: string) => {
+      if (!clusterId) return "#64748b"; // default slate gray for unclustered
+      const idx = uniqueClusters.indexOf(clusterId);
+      return CLUSTER_COLORS[idx % CLUSTER_COLORS.length];
+    };
+
+    if (!activeId) {
+      // Reset all
+      nodes.selectAll("circle")
+        .attr("r", 8)
+        .style("filter", "none")
+        .style("opacity", 1);
+      nodes.selectAll("text")
+        .style("opacity", 0);
+      links
+        .attr("stroke", "#ffffff")
+        .attr("stroke-opacity", 0.15)
+        .attr("stroke-width", 1.5);
+      return;
+    }
+
+    // Find connected nodes
+    const connectedNodeIds = new Set<string>();
+    connectedNodeIds.add(activeId);
+    
+    // Find links connected to activeId
+    links.each((d) => {
+      const sourceId = typeof d.source === "object" ? (d.source as GraphNode).id : (d.source as string);
+      const targetId = typeof d.target === "object" ? (d.target as GraphNode).id : (d.target as string);
+      
+      if (sourceId === activeId) connectedNodeIds.add(targetId);
+      if (targetId === activeId) connectedNodeIds.add(sourceId);
+    });
+
+    // Update Node highlights
+    nodes.selectAll("circle")
+      .attr("r", (d: any) => d.id === activeId ? 11 : connectedNodeIds.has(d.id) ? 9 : 6)
+      .style("opacity", (d: any) => connectedNodeIds.has(d.id) ? 1 : 0.2)
+      .style("filter", (d: any) => d.id === activeId ? "url(#glow)" : "none");
+
+    // Show labels for connected nodes
+    nodes.selectAll("text")
+      .style("opacity", (d: any) => connectedNodeIds.has(d.id) ? 1 : 0)
+      .attr("fill", (d: any) => d.id === activeId ? "var(--text-primary)" : "var(--text-secondary)");
+
+    // Update Link highlights
+    links
+      .attr("stroke", (d: any) => {
+        const sId = typeof d.source === "object" ? (d.source as GraphNode).id : (d.source as string);
+        const tId = typeof d.target === "object" ? (d.target as GraphNode).id : (d.target as string);
+        if (sId === activeId || tId === activeId) {
+          // Color edge by active node cluster color
+          return notes[activeId]?.clusterId ? getClusterColor(notes[activeId].clusterId) : "var(--primary)";
+        }
+        return "#ffffff";
+      })
+      .attr("stroke-opacity", (d: any) => {
+        const sId = typeof d.source === "object" ? (d.source as GraphNode).id : (d.source as string);
+        const tId = typeof d.target === "object" ? (d.target as GraphNode).id : (d.target as string);
+        return (sId === activeId || tId === activeId) ? 0.8 : 0.03;
+      })
+      .attr("stroke-width", (d: any) => {
+        const sId = typeof d.source === "object" ? (d.source as GraphNode).id : (d.source as string);
+        const tId = typeof d.target === "object" ? (d.target as GraphNode).id : (d.target as string);
+        return (sId === activeId || tId === activeId) ? 2.5 : 1.2;
+      });
+  }, [notes, selectedNoteId, hoveredNodeId]);
 
   // Center Graph view so all nodes are visible
   const handleCenter = () => {

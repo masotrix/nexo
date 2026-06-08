@@ -8,12 +8,11 @@ import { KnowledgeGraph } from "./components/KnowledgeGraph";
 import { NoteDetails } from "./components/NoteDetails";
 import { StatsPanel } from "./components/StatsPanel";
 import { 
-  PenTool, 
-  BookOpen, 
   BarChart3, 
   Settings as SettingsIcon, 
   Network, 
-  AlertCircle
+  AlertCircle,
+  Plus
 } from "lucide-react";
 
 
@@ -115,7 +114,7 @@ export const App: React.FC = () => {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<"graph" | "capture" | "details" | "stats" | "settings">("settings");
+  const [activeTab, setActiveTab] = useState<"graph" | "capture" | "stats" | "settings">("settings");
   
   // Loading & Processing States
   const [isLoading, setIsLoading] = useState(false);
@@ -127,6 +126,10 @@ export const App: React.FC = () => {
   
   // Errors
   const [appError, setAppError] = useState<string | null>(null);
+
+  // Service Worker Update State
+  const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [showUpdateReady, setShowUpdateReady] = useState(false);
 
   // Sync config from local storage or Settings updates
   const handleConfigChanged = () => {
@@ -175,6 +178,46 @@ export const App: React.FC = () => {
 
     if (isAuthenticated) {
       loadIndexData();
+    }
+  }, []);
+
+  // Register Service Worker and check for updates
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js")
+        .then((reg) => {
+          setSwRegistration(reg);
+
+          // If there is already a waiting worker, show update banner
+          if (reg.waiting) {
+            setShowUpdateReady(true);
+          }
+
+          // Listen for new installing worker
+          reg.addEventListener("updatefound", () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener("statechange", () => {
+                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                  // A new service worker is installed and waiting
+                  setShowUpdateReady(true);
+                }
+              });
+            }
+          });
+        })
+        .catch((err) => {
+          console.error("Error al registrar el Service Worker:", err);
+        });
+
+      // Listen for controllerchange to reload page
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
     }
   }, []);
 
@@ -291,7 +334,7 @@ export const App: React.FC = () => {
       setIndex(updatedIndex);
       setSelectedNoteToEdit(null);
       setSelectedNoteId(tempId); // Focus note immediately
-      setActiveTab("details");
+      setActiveTab("stats");
       setIsSaving(false); // Done saving from UI perspective!
 
       // 7. Perform Google Drive saving calls in the background (non-blocking)
@@ -487,14 +530,23 @@ export const App: React.FC = () => {
 
   const handleSelectNoteFromGraph = (noteId: string | null) => {
     setSelectedNoteId(noteId);
-    if (noteId) {
-      setActiveTab("details");
-    }
   };
 
   const handleEditNoteTrigger = (note: { id: string; title: string; content: string; date: string }) => {
     setSelectedNoteToEdit(note);
     setActiveTab("capture");
+  };
+
+  const handleNewNoteClick = () => {
+    setSelectedNoteToEdit(null);
+    setSelectedNoteId(null);
+    setActiveTab("capture");
+  };
+
+  const handleApplyUpdate = () => {
+    if (swRegistration && swRegistration.waiting) {
+      swRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
   };
 
   const renderNavButtons = () => (
@@ -509,23 +561,7 @@ export const App: React.FC = () => {
         <span>Grafo</span>
       </StyledNavButton>
 
-      <StyledNavButton 
-        $active={activeTab === "capture"}
-        onClick={() => { setActiveTab("capture"); setSelectedNoteToEdit(null); }}
-        title="Capturar nota"
-      >
-        <PenTool size={18} />
-        <span>Captura</span>
-      </StyledNavButton>
 
-      <StyledNavButton 
-        $active={activeTab === "details"}
-        onClick={() => setActiveTab("details")}
-        title="Detalle de Nota"
-      >
-        <BookOpen size={18} />
-        <span>Detalle</span>
-      </StyledNavButton>
 
       <StyledNavButton 
         $active={activeTab === "stats"}
@@ -569,6 +605,16 @@ export const App: React.FC = () => {
                 Nodos de Lectura Atómica
               </span>
             </div>
+            {isAuthenticated && hasConfig && (
+              <button 
+                className="primary" 
+                onClick={handleNewNoteClick}
+                style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", borderRadius: "8px" }}
+              >
+                <Plus size={16} />
+                <span>Nuevo Nodo</span>
+              </button>
+            )}
           </div>
 
           <div style={{ flex: 1, position: "relative" }}>
@@ -626,26 +672,7 @@ export const App: React.FC = () => {
               />
             )}
 
-            {activeTab === "details" && (
-              selectedNoteId ? (
-                <NoteDetails 
-                  noteId={selectedNoteId} 
-                  driveService={driveService}
-                  notesIndex={index.notes}
-                  onClose={() => { setSelectedNoteId(null); setActiveTab("stats"); }}
-                  onEditNote={handleEditNoteTrigger}
-                  onDeleteNote={handleDeleteNote}
-                  onSelectNoteId={setSelectedNoteId}
-                  clusters={index.clusters}
-                />
-              ) : (
-                <div className="glass-panel" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100%", gap: "1rem", color: "var(--text-secondary)", textAlign: "center" }}>
-                  <BookOpen size={36} style={{ color: "var(--text-muted)" }} />
-                  <p style={{ fontSize: "0.9rem" }}>No se ha seleccionado ningún nodo.</p>
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Haz click en un círculo del grafo de conocimiento a la izquierda para inspeccionar sus contenidos.</span>
-                </div>
-              )
-            )}
+
 
             {activeTab === "stats" && (
               <StatsPanel 
@@ -762,6 +789,89 @@ export const App: React.FC = () => {
               }}
             >
               Cerrar sesión de esta cuenta
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Note Details Modal Popup */}
+      {selectedNoteId && activeTab !== "capture" && (
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(6, 9, 19, 0.75)",
+          backdropFilter: "var(--glass-blur)",
+          WebkitBackdropFilter: "var(--glass-blur)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 1500,
+          animation: "fadeIn 0.25s ease"
+        }}
+        onClick={() => setSelectedNoteId(null)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "600px",
+              width: "90%",
+              maxHeight: "85vh",
+              display: "flex",
+              flexDirection: "column",
+              animation: "scaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            <NoteDetails 
+              noteId={selectedNoteId} 
+              driveService={driveService}
+              notesIndex={index.notes}
+              onClose={() => setSelectedNoteId(null)}
+              onEditNote={handleEditNoteTrigger}
+              onDeleteNote={handleDeleteNote}
+              onSelectNoteId={setSelectedNoteId}
+              clusters={index.clusters}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Update Ready Banner */}
+      {showUpdateReady && (
+        <div style={{
+          position: "absolute",
+          top: "1.5rem",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 3000,
+          animation: "scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+        }}>
+          <div className="glass-panel" style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+            padding: "0.8rem 1.2rem",
+            border: "1px solid rgba(139, 92, 246, 0.3)",
+            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.4)",
+            borderRadius: "12px",
+            background: "rgba(13, 20, 38, 0.9)"
+          }}>
+            <span style={{ fontSize: "0.9rem", color: "var(--text-primary)", fontWeight: "500" }}>
+              🚀 Hay una nueva versión disponible.
+            </span>
+            <button 
+              className="primary" 
+              onClick={handleApplyUpdate}
+              style={{
+                padding: "0.4rem 0.8rem",
+                fontSize: "0.8rem",
+                borderRadius: "6px"
+              }}
+            >
+              Actualizar Ahora
             </button>
           </div>
         </div>
