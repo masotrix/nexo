@@ -169,6 +169,10 @@ export const App: React.FC = () => {
 
   // Load index data on startup if already authenticated
   useEffect(() => {
+    driveService.onSessionExpired = () => {
+      setIsAuthenticated(false);
+    };
+
     if (isAuthenticated) {
       loadIndexData();
     }
@@ -666,6 +670,102 @@ export const App: React.FC = () => {
       <StyledMobileNavBar>
         {renderNavButtons()}
       </StyledMobileNavBar>
+
+      {/* Reconnection Overlay */}
+      {!isAuthenticated && localStorage.getItem("nexo_was_connected") === "true" && (
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(6, 9, 19, 0.75)",
+          backdropFilter: "var(--glass-blur)",
+          WebkitBackdropFilter: "var(--glass-blur)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 2000,
+          animation: "fadeIn 0.3s ease"
+        }}>
+          <div className="glass-panel" style={{
+            maxWidth: "420px",
+            width: "90%",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: "1.5rem",
+            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.4)",
+            border: "1px solid rgba(139, 92, 246, 0.2)",
+            padding: "2.5rem 2rem",
+            transform: "scale(1)",
+            animation: "scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+          }}>
+            <div style={{
+              width: "60px",
+              height: "60px",
+              borderRadius: "50%",
+              background: "rgba(139, 92, 246, 0.1)",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              margin: "0 auto",
+              color: "var(--primary)",
+              boxShadow: "0 0 20px rgba(139, 92, 246, 0.15)"
+            }}>
+              <AlertCircle size={32} />
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <h2 style={{ fontSize: "1.5rem", background: "linear-gradient(135deg, #f8fafc, #94a3b8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                Sesión Expirada
+              </h2>
+              <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", lineHeight: "1.6" }}>
+                Tu sesión con Google Drive ha expirado. Reconéctate para seguir visualizando y guardando tus notas.
+              </p>
+            </div>
+
+            <button 
+              className="primary" 
+              onClick={async () => {
+                try {
+                  await driveService.login();
+                  handleConfigChanged();
+                } catch (err: any) {
+                  console.error("Reconnection error:", err);
+                }
+              }}
+              style={{
+                width: "100%",
+                padding: "0.8rem",
+                fontSize: "1rem",
+                fontWeight: "600",
+                marginTop: "0.5rem"
+              }}
+            >
+              Reconectar Cuenta
+            </button>
+            
+            <button 
+              onClick={() => {
+                driveService.logout();
+                handleConfigChanged();
+              }}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-muted)",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+                padding: 0,
+                textDecoration: "underline"
+              }}
+            >
+              Cerrar sesión de esta cuenta
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

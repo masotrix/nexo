@@ -23,6 +23,7 @@ export class GoogleDriveService {
   private clientId: string = "";
   private folderId: string | null = null;
   private contentCache = new Map<string, { title: string; date: string; content: string }>();
+  public onSessionExpired?: () => void;
 
   public cacheContent(fileId: string, data: { title: string; date: string; content: string }) {
     this.contentCache.set(fileId, data);
@@ -82,6 +83,7 @@ export class GoogleDriveService {
           
           localStorage.setItem("nexo_google_access_token", this.accessToken!);
           localStorage.setItem("nexo_google_token_expiry", this.tokenExpiry.toString());
+          localStorage.setItem("nexo_was_connected", "true");
           
           resolve(this.accessToken!);
         },
@@ -99,6 +101,7 @@ export class GoogleDriveService {
     localStorage.removeItem("nexo_google_access_token");
     localStorage.removeItem("nexo_google_token_expiry");
     localStorage.removeItem("nexo_google_folder_id");
+    localStorage.removeItem("nexo_was_connected");
   }
 
   // Generic helper for authenticated fetches
@@ -107,6 +110,9 @@ export class GoogleDriveService {
     options: RequestInit = {}
   ): Promise<any> {
     if (!this.isAuthenticated()) {
+      if (this.onSessionExpired) {
+        this.onSessionExpired();
+      }
       throw new Error("Sesión de Google Drive expirada o no iniciada.");
     }
 
@@ -116,7 +122,13 @@ export class GoogleDriveService {
     const response = await fetch(url, { ...options, headers });
     
     if (response.status === 401) {
-      this.logout();
+      this.accessToken = null;
+      this.tokenExpiry = 0;
+      localStorage.removeItem("nexo_google_access_token");
+      localStorage.removeItem("nexo_google_token_expiry");
+      if (this.onSessionExpired) {
+        this.onSessionExpired();
+      }
       throw new Error("Sesión de Google Drive invalidada. Por favor ingresa de nuevo.");
     }
 
