@@ -6,6 +6,7 @@ export interface NoteMetadata {
   date: string;         // ISO Date string
   connections: string[]; // List of connected note file IDs
   clusterId?: string;   // Assigned topic cluster ID
+  embedding?: number[]; // Vector embedding for client distance/cluster calculations
 }
 
 export interface GraphIndex {

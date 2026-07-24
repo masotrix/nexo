@@ -197,18 +197,40 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           const noteA = notes[sourceId];
           const noteB = notes[targetId];
           
-          if (noteA && noteB && (noteA as any).embedding && (noteB as any).embedding) {
-            const sim = EmbeddingsService.cosineSimilarity((noteA as any).embedding, (noteB as any).embedding);
-            // Sim is typically between threshold (e.g. 0.65) and 1.0.
-            // distance = 40 + (1 - sim) * 300
-            return 40 + (1 - sim) * 300;
+          if (noteA && noteB) {
+            const embedA = noteA.embedding;
+            const embedB = noteB.embedding;
+
+            // 1. Vector cosine similarity (if embeddings present in RAM)
+            if (embedA && embedA.length > 0 && embedB && embedB.length > 0) {
+              const sim = EmbeddingsService.cosineSimilarity(embedA, embedB);
+              const clampedSim = Math.max(0.5, Math.min(1.0, sim));
+              // High similarity (1.0) -> ~35px, Threshold similarity (0.5) -> ~150px
+              return 150 - (clampedSim - 0.5) * 230;
+            }
+
+            // 2. Fallback to topic cluster matching
+            if (noteA.clusterId && noteB.clusterId) {
+              return noteA.clusterId === noteB.clusterId ? 40 : 150;
+            }
           }
-          return 90; // Fallback
+          return 80;
+        })
+        .strength((link) => {
+          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
+          const targetId = typeof link.target === "object" ? link.target.id : link.target;
+          const noteA = notes[sourceId];
+          const noteB = notes[targetId];
+
+          if (noteA && noteB && noteA.clusterId && noteB.clusterId && noteA.clusterId === noteB.clusterId) {
+            return 0.7; // Strong pull between nodes in the same cluster
+          }
+          return 0.2; // Gentle pull between cross-cluster nodes
         })
       )
-      .force("charge", d3.forceManyBody().strength(-120))
+      .force("charge", d3.forceManyBody().strength(-80))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide().radius(22))
+      .force("collide", d3.forceCollide().radius(20))
       .force("x", d3.forceX<GraphNode>()
         .x((d) => {
           if (!d.clusterId) return width / 2;
@@ -218,7 +240,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           const radius = Math.min(width, height) * 0.25;
           return width / 2 + radius * Math.cos(angle);
         })
-        .strength(0.12)
+        .strength(0.22)
       )
       .force("y", d3.forceY<GraphNode>()
         .y((d) => {
@@ -229,7 +251,7 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           const radius = Math.min(width, height) * 0.25;
           return height / 2 + radius * Math.sin(angle);
         })
-        .strength(0.12)
+        .strength(0.22)
       );
 
     // Freeze physics after simulation converges (performance optimization)
