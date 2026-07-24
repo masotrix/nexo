@@ -157,4 +157,122 @@ export class EmbeddingsService {
 
     return { assignments, centroids, WCSS };
   }
+
+  // Project high-dimensional (384D) embeddings into 2D canvas coordinates using Principal Component Analysis (PCA)
+  public static projectTo2D(
+    notes: { id: string; embedding?: number[] }[],
+    width: number,
+    height: number
+  ): { [id: string]: { x: number; y: number } } {
+    const validNotes = notes.filter(n => n.embedding && n.embedding.length > 0);
+    if (validNotes.length === 0) return {};
+
+    const dim = validNotes[0].embedding!.length;
+    const N = validNotes.length;
+
+    // 1. Calculate mean vector
+    const mean = new Array(dim).fill(0);
+    for (const note of validNotes) {
+      for (let d = 0; d < dim; d++) {
+        mean[d] += note.embedding![d];
+      }
+    }
+    for (let d = 0; d < dim; d++) {
+      mean[d] /= N;
+    }
+
+    // 2. Center matrix X
+    const X: number[][] = validNotes.map(note => {
+      return note.embedding!.map((val, d) => val - mean[d]);
+    });
+
+    // Helper: Matrix-vector product X^T * (X * v)
+    const multiplyXtXv = (mat: number[][], v: number[]): number[] => {
+      const Xv = new Array(N).fill(0);
+      for (let i = 0; i < N; i++) {
+        let sum = 0;
+        for (let d = 0; d < dim; d++) {
+          sum += mat[i][d] * v[d];
+        }
+        Xv[i] = sum;
+      }
+      const res = new Array(dim).fill(0);
+      for (let d = 0; d < dim; d++) {
+        let sum = 0;
+        for (let i = 0; i < N; i++) {
+          sum += mat[i][d] * Xv[i];
+        }
+        res[d] = sum;
+      }
+      return res;
+    };
+
+    const normalize = (v: number[]): number[] => {
+      let norm = 0;
+      for (let d = 0; d < dim; d++) norm += v[d] * v[d];
+      norm = Math.sqrt(norm);
+      if (norm === 0) return v;
+      return v.map(val => val / norm);
+    };
+
+    // Power iteration for Principal Component 1
+    let e1 = normalize(new Array(dim).fill(0).map((_, i) => (i % 2 === 0 ? 1 : -1)));
+    for (let iter = 0; iter < 15; iter++) {
+      e1 = normalize(multiplyXtXv(X, e1));
+    }
+
+    // Deflate X for Principal Component 2: X_def = X - (X * e1) * e1^T
+    const X_def: number[][] = X.map(row => {
+      let dot = 0;
+      for (let d = 0; d < dim; d++) dot += row[d] * e1[d];
+      return row.map((val, d) => val - dot * e1[d]);
+    });
+
+    // Power iteration for Principal Component 2
+    let e2 = normalize(new Array(dim).fill(0).map((_, i) => (i % 3 === 0 ? 1 : -1)));
+    for (let iter = 0; iter < 15; iter++) {
+      e2 = normalize(multiplyXtXv(X_def, e2));
+    }
+
+    // Project each note onto PC1 (e1) and PC2 (e2)
+    const coords: { [id: string]: { rawX: number; rawY: number } } = {};
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    validNotes.forEach((note, i) => {
+      let px = 0;
+      let py = 0;
+      for (let d = 0; d < dim; d++) {
+        px += X[i][d] * e1[d];
+        py += X[i][d] * e2[d];
+      }
+      coords[note.id] = { rawX: px, rawY: py };
+      if (px < minX) minX = px;
+      if (px > maxX) maxX = px;
+      if (py < minY) minY = py;
+      if (py > maxY) maxY = py;
+    });
+
+    // Map raw projections to canvas dimensions with 12% padding
+    const paddingX = width * 0.12;
+    const paddingY = height * 0.12;
+    const targetWidth = width - 2 * paddingX;
+    const targetHeight = height - 2 * paddingY;
+
+    const rangeX = maxX - minX || 1;
+    const rangeY = maxY - minY || 1;
+
+    const result: { [id: string]: { x: number; y: number } } = {};
+    for (const note of validNotes) {
+      const c = coords[note.id];
+      const normX = (c.rawX - minX) / rangeX;
+      const normY = (c.rawY - minY) / rangeY;
+      result[note.id] = {
+        x: paddingX + normX * targetWidth,
+        y: paddingY + normY * targetHeight
+      };
+    }
+
+    return result;
+  }
 }

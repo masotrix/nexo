@@ -89,12 +89,20 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       return CLUSTER_COLORS[idx % CLUSTER_COLORS.length];
     };
 
-    const d3Nodes: GraphNode[] = Object.values(notes).map((note) => ({
-      id: note.id,
-      title: note.title,
-      clusterId: note.clusterId,
-      color: getClusterColor(note.clusterId),
-    }));
+    // 1. Calculate 2D PCA projection coordinates directly from high-dimensional (384D) embeddings
+    const projectedPositions = EmbeddingsService.projectTo2D(Object.values(notes), width, height);
+
+    const d3Nodes: GraphNode[] = Object.values(notes).map((note) => {
+      const proj = projectedPositions[note.id];
+      return {
+        id: note.id,
+        title: note.title,
+        clusterId: note.clusterId,
+        color: getClusterColor(note.clusterId),
+        x: proj ? proj.x : width / 2 + (Math.random() - 0.5) * 50,
+        y: proj ? proj.y : height / 2 + (Math.random() - 0.5) * 50,
+      };
+    });
 
     const d3Links: GraphLink[] = [];
     const seenLinks = new Set<string>();
@@ -186,82 +194,29 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       .style("font-family", "Inter, sans-serif")
       .style("transition", "opacity 0.2s ease");
 
-     // 5. Force Simulation Setup
+    // 5. Dimensionality Reduction (PCA Projected) Layout Setup
     const simulation = d3.forceSimulation<GraphNode>(d3Nodes)
-      .velocityDecay(0.6) // High physical friction to absorb kinetic energy and stop oscillation chaos
-      .alphaDecay(0.035)  // Cool down simulation smoothly and rapidly
-      .alphaMin(0.005)    // Freeze physics once converged
+      .velocityDecay(0.4)
+      .alphaDecay(0.04)
+      .alphaMin(0.005)
+      // Anchor nodes strongly to their 2D PCA projected semantic coordinates
+      .force("x", d3.forceX<GraphNode>((d) => {
+        const proj = projectedPositions[d.id];
+        return proj ? proj.x : width / 2;
+      }).strength(0.85))
+      .force("y", d3.forceY<GraphNode>((d) => {
+        const proj = projectedPositions[d.id];
+        return proj ? proj.y : height / 2;
+      }).strength(0.85))
+      // Anti-overlap collision buffer
+      .force("collide", d3.forceCollide().radius(18).iterations(2))
+      // Draw links without pulling nodes out of their projected positions
       .force("link", d3.forceLink<GraphNode, GraphLink>(d3Links)
         .id(d => d.id)
-        .distance((link) => {
-          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
-          const targetId = typeof link.target === "object" ? link.target.id : link.target;
-          
-          const noteA = notes[sourceId];
-          const noteB = notes[targetId];
-          
-          if (noteA && noteB) {
-            const embedA = noteA.embedding;
-            const embedB = noteB.embedding;
-
-            // 1. Non-linear Vector Cosine Similarity
-            if (embedA && embedA.length > 0 && embedB && embedB.length > 0) {
-              const sim = EmbeddingsService.cosineSimilarity(embedA, embedB);
-              const s = Math.max(0, Math.min(1, (sim - 0.60) / 0.30));
-              // Min link distance 38px (strictly > 28px collision diameter), max distance 210px
-              return 38 + Math.pow(1 - s, 2) * 172;
-            }
-
-            // 2. Fallback to topic cluster matching
-            if (noteA.clusterId && noteB.clusterId) {
-              return noteA.clusterId === noteB.clusterId ? 45 : 180;
-            }
-          }
-          return 90;
-        })
-        .strength((link) => {
-          const sourceId = typeof link.source === "object" ? link.source.id : link.source;
-          const targetId = typeof link.target === "object" ? link.target.id : link.target;
-          const noteA = notes[sourceId];
-          const noteB = notes[targetId];
-
-          if (noteA && noteB) {
-            if (noteA.embedding && noteB.embedding) {
-              const sim = EmbeddingsService.cosineSimilarity(noteA.embedding, noteB.embedding);
-              return Math.max(0.1, Math.min(0.6, sim)); // Moderate link tension
-            }
-            if (noteA.clusterId && noteB.clusterId && noteA.clusterId === noteB.clusterId) {
-              return 0.5;
-            }
-          }
-          return 0.15;
-        })
+        .distance(80)
+        .strength(0.02)
       )
-      .force("charge", d3.forceManyBody().strength(-50).distanceMax(250)) // Distance-capped local repulsion
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide().radius(14).iterations(2)) // Harmonized with 38px min link distance to avoid force fighting
-      .force("x", d3.forceX<GraphNode>()
-        .x((d) => {
-          if (!d.clusterId) return width / 2;
-          const idx = uniqueClusters.indexOf(d.clusterId);
-          if (idx === -1) return width / 2;
-          const angle = (2 * Math.PI * idx) / uniqueClusters.length;
-          const radius = Math.min(width, height) * 0.32;
-          return width / 2 + radius * Math.cos(angle);
-        })
-        .strength(0.18)
-      )
-      .force("y", d3.forceY<GraphNode>()
-        .y((d) => {
-          if (!d.clusterId) return height / 2;
-          const idx = uniqueClusters.indexOf(d.clusterId);
-          if (idx === -1) return height / 2;
-          const angle = (2 * Math.PI * idx) / uniqueClusters.length;
-          const radius = Math.min(width, height) * 0.32;
-          return height / 2 + radius * Math.sin(angle);
-        })
-        .strength(0.18)
-      );
+      .force("charge", d3.forceManyBody().strength(-15).distanceMax(150));
 
     // Freeze physics after simulation converges (performance optimization)
     simulation.alphaMin(0.02); // converge faster
