@@ -58,8 +58,8 @@ export class GoogleDriveService {
     return !!this.accessToken && Date.now() < this.tokenExpiry;
   }
 
-  // Initialize and request Google login popup
-  public login(): Promise<string> {
+  // Initialize and request Google login popup (interactive or silent)
+  public login(silent = false): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.clientId) {
         return reject(new Error("Por favor, ingresa tu Google Client ID en Ajustes."));
@@ -90,7 +90,11 @@ export class GoogleDriveService {
         },
       });
 
-      client.requestAccessToken();
+      if (silent) {
+        client.requestAccessToken({ prompt: "" });
+      } else {
+        client.requestAccessToken({ prompt: "select_account" });
+      }
     });
   }
 

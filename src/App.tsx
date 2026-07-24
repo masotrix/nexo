@@ -193,15 +193,50 @@ export const App: React.FC = () => {
     }
   };
 
-  // Load index data on startup if already authenticated
+  // Auto-restore / Silent refresh session when returning to PWA app on mobile
   useEffect(() => {
     driveService.onSessionExpired = () => {
       setIsAuthenticated(false);
     };
 
-    if (isAuthenticated) {
-      loadIndexData();
-    }
+    const handleAppFocus = async () => {
+      const wasConnected = localStorage.getItem("nexo_was_connected") === "true";
+      if (wasConnected && driveService.getClientId()) {
+        const storedToken = localStorage.getItem("nexo_google_access_token");
+        const storedExpiry = parseInt(localStorage.getItem("nexo_google_token_expiry") || "0", 10);
+
+        // If token is missing or expired
+        if (!storedToken || Date.now() >= storedExpiry - 60000) {
+          try {
+            await driveService.login(true); // Silent token request (no popup)
+            setIsAuthenticated(true);
+            loadIndexData();
+          } catch (e) {
+            console.warn("Autenticación silenciosa PWA a la espera de interacción:", e);
+          }
+        } else {
+          setIsAuthenticated(true);
+          loadIndexData();
+        }
+      } else if (isAuthenticated) {
+        loadIndexData();
+      }
+    };
+
+    window.addEventListener("focus", handleAppFocus);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleAppFocus();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    handleAppFocus(); // Check immediately on mount
+
+    return () => {
+      window.removeEventListener("focus", handleAppFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   // Register Service Worker and check for updates
