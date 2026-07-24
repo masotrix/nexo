@@ -163,6 +163,29 @@ export const App: React.FC = () => {
       }
       
       setIndex(driveIndex);
+
+      // Async background populator for any notes missing embeddings
+      setTimeout(async () => {
+        const notesList = Object.values(driveIndex.notes);
+        const missingEmbeds = notesList.filter(n => !n.embedding || n.embedding.length === 0);
+        if (missingEmbeds.length > 0) {
+          const updatedNotes = { ...driveIndex.notes };
+          let changed = false;
+          for (const note of missingEmbeds) {
+            try {
+              const fileData = await driveService.readNoteFile(note.id);
+              const embed = await embeddingsService.getEmbedding(note.title, fileData.content);
+              updatedNotes[note.id] = { ...updatedNotes[note.id], embedding: embed };
+              changed = true;
+            } catch (e) {
+              console.warn("Error generando embedding en segundo plano para nota", note.id, e);
+            }
+          }
+          if (changed) {
+            setIndex(prev => ({ ...prev, notes: updatedNotes }));
+          }
+        }
+      }, 300);
     } catch (err: any) {
       setAppError(err.message || "Error al cargar la base de datos de Google Drive.");
     } finally {
