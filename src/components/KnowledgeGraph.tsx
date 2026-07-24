@@ -188,6 +188,9 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
 
      // 5. Force Simulation Setup
     const simulation = d3.forceSimulation<GraphNode>(d3Nodes)
+      .velocityDecay(0.6) // High physical friction to absorb kinetic energy and stop oscillation chaos
+      .alphaDecay(0.035)  // Cool down simulation smoothly and rapidly
+      .alphaMin(0.005)    // Freeze physics once converged
       .force("link", d3.forceLink<GraphNode, GraphLink>(d3Links)
         .id(d => d.id)
         .distance((link) => {
@@ -201,18 +204,17 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             const embedA = noteA.embedding;
             const embedB = noteB.embedding;
 
-            // 1. Non-linear high-contrast Vector Cosine Similarity
+            // 1. Non-linear Vector Cosine Similarity
             if (embedA && embedA.length > 0 && embedB && embedB.length > 0) {
               const sim = EmbeddingsService.cosineSimilarity(embedA, embedB);
-              // Normalize similarity in range 0.60..0.90 to s in 0..1
               const s = Math.max(0, Math.min(1, (sim - 0.60) / 0.30));
-              // Exponential curve: high similarity drops distance steeply to ~25px, low similarity expands distance up to ~250px
-              return 25 + Math.pow(1 - s, 2.5) * 225;
+              // Min link distance 38px (strictly > 28px collision diameter), max distance 210px
+              return 38 + Math.pow(1 - s, 2) * 172;
             }
 
             // 2. Fallback to topic cluster matching
             if (noteA.clusterId && noteB.clusterId) {
-              return noteA.clusterId === noteB.clusterId ? 35 : 220;
+              return noteA.clusterId === noteB.clusterId ? 45 : 180;
             }
           }
           return 90;
@@ -226,28 +228,28 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           if (noteA && noteB) {
             if (noteA.embedding && noteB.embedding) {
               const sim = EmbeddingsService.cosineSimilarity(noteA.embedding, noteB.embedding);
-              return Math.max(0.15, Math.min(0.95, sim));
+              return Math.max(0.1, Math.min(0.6, sim)); // Moderate link tension
             }
             if (noteA.clusterId && noteB.clusterId && noteA.clusterId === noteB.clusterId) {
-              return 0.75;
+              return 0.5;
             }
           }
-          return 0.2;
+          return 0.15;
         })
       )
-      .force("charge", d3.forceManyBody().strength(-60))
+      .force("charge", d3.forceManyBody().strength(-50).distanceMax(250)) // Distance-capped local repulsion
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collide", d3.forceCollide().radius(22))
+      .force("collide", d3.forceCollide().radius(14).iterations(2)) // Harmonized with 38px min link distance to avoid force fighting
       .force("x", d3.forceX<GraphNode>()
         .x((d) => {
           if (!d.clusterId) return width / 2;
           const idx = uniqueClusters.indexOf(d.clusterId);
           if (idx === -1) return width / 2;
           const angle = (2 * Math.PI * idx) / uniqueClusters.length;
-          const radius = Math.min(width, height) * 0.38;
+          const radius = Math.min(width, height) * 0.32;
           return width / 2 + radius * Math.cos(angle);
         })
-        .strength(0.25)
+        .strength(0.18)
       )
       .force("y", d3.forceY<GraphNode>()
         .y((d) => {
@@ -255,10 +257,10 @@ export const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
           const idx = uniqueClusters.indexOf(d.clusterId);
           if (idx === -1) return height / 2;
           const angle = (2 * Math.PI * idx) / uniqueClusters.length;
-          const radius = Math.min(width, height) * 0.38;
+          const radius = Math.min(width, height) * 0.32;
           return height / 2 + radius * Math.sin(angle);
         })
-        .strength(0.25)
+        .strength(0.18)
       );
 
     // Freeze physics after simulation converges (performance optimization)
