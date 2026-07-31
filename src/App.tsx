@@ -113,6 +113,108 @@ export const App: React.FC = () => {
   const [index, setIndex] = useState<GraphIndex>({ notes: {}, similarityThreshold: 0.65, clusters: {} });
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   
+  // Active Graph State
+  const [activeGraphId, setActiveGraphId] = useState<string>(() => {
+    return localStorage.getItem("nexo_active_graph_id") || "default";
+  });
+
+  const availableGraphs = useMemo(() => {
+    const graphsMap = index.graphs || {};
+    const defaultGraph = { id: "default", name: "Grafo Principal", date: new Date().toISOString() };
+    return { default: defaultGraph, ...graphsMap };
+  }, [index.graphs]);
+
+  const filteredNotes = useMemo(() => {
+    if (activeGraphId === "all") {
+      return index.notes;
+    }
+    const result: { [id: string]: NoteMetadata } = {};
+    Object.values(index.notes).forEach((note) => {
+      const noteGraphId = note.graphId || "default";
+      if (noteGraphId === activeGraphId) {
+        result[note.id] = note;
+      }
+    });
+    return result;
+  }, [index.notes, activeGraphId]);
+
+  const filteredIndex = useMemo(() => {
+    return {
+      ...index,
+      notes: filteredNotes
+    };
+  }, [index, filteredNotes]);
+
+  const handleSelectGraph = (graphId: string) => {
+    setActiveGraphId(graphId);
+    localStorage.setItem("nexo_active_graph_id", graphId);
+  };
+
+  const handleCreateGraph = async (name?: string) => {
+    const graphName = name || prompt("Nombre del nuevo grafo:");
+    if (!graphName || !graphName.trim()) return;
+
+    const newGraphId = `graph_${Date.now()}`;
+    const newGraph = {
+      id: newGraphId,
+      name: graphName.trim(),
+      date: new Date().toISOString()
+    };
+
+    const updatedGraphs = {
+      ...(index.graphs || { default: { id: "default", name: "Grafo Principal", date: new Date().toISOString() } }),
+      [newGraphId]: newGraph
+    };
+
+    const updatedIndex: GraphIndex = {
+      ...index,
+      graphs: updatedGraphs,
+      activeGraphId: newGraphId
+    };
+
+    setIndex(updatedIndex);
+    setActiveGraphId(newGraphId);
+    localStorage.setItem("nexo_active_graph_id", newGraphId);
+
+    if (driveService.isAuthenticated()) {
+      await driveService.saveIndex(updatedIndex);
+    }
+  };
+
+  const handleDeleteGraph = async (graphId: string) => {
+    if (graphId === "default") {
+      alert("El Grafo Principal no se puede eliminar.");
+      return;
+    }
+    if (!confirm("¿Seguro que deseas eliminar este grafo? Las notas asociadas volverán al Grafo Principal.")) {
+      return;
+    }
+
+    const updatedGraphs = { ...(index.graphs || {}) };
+    delete updatedGraphs[graphId];
+
+    const updatedNotes = { ...index.notes };
+    for (const id in updatedNotes) {
+      if (updatedNotes[id].graphId === graphId) {
+        updatedNotes[id] = { ...updatedNotes[id], graphId: "default" };
+      }
+    }
+
+    const updatedIndex: GraphIndex = {
+      ...index,
+      notes: updatedNotes,
+      graphs: updatedGraphs
+    };
+
+    setIndex(updatedIndex);
+    setActiveGraphId("default");
+    localStorage.setItem("nexo_active_graph_id", "default");
+
+    if (driveService.isAuthenticated()) {
+      await driveService.saveIndex(updatedIndex);
+    }
+  };
+
   // Navigation State
   const [activeTab, setActiveTab] = useState<"graph" | "capture" | "stats" | "settings">("settings");
   
@@ -193,13 +295,22 @@ export const App: React.FC = () => {
     }
   };
 
-  // Auto-restore / Silent refresh session when returning to PWA app on mobile
+  // Auto-restore / Silent refresh session / Handle OAuth redirect URL token when returning to PWA app
   useEffect(() => {
     driveService.onSessionExpired = () => {
       setIsAuthenticated(false);
     };
 
     const handleAppFocus = async () => {
+      // Check if arriving back from OAuth URL Redirect (#access_token=...)
+      const justAuthenticatedFromRedirect = driveService.handleUrlHashToken();
+      if (justAuthenticatedFromRedirect) {
+        setIsAuthenticated(true);
+        loadIndexData();
+        setActiveTab("stats");
+        return;
+      }
+
       const wasConnected = localStorage.getItem("nexo_was_connected") === "true";
       if (wasConnected && driveService.getClientId()) {
         const storedToken = localStorage.getItem("nexo_google_access_token");
@@ -359,6 +470,10 @@ export const App: React.FC = () => {
         }
       }
 
+      const targetGraphId = selectedNoteToEdit 
+        ? (index.notes[selectedNoteToEdit.id]?.graphId || "default")
+        : (activeGraphId === "all" ? "default" : activeGraphId);
+
       // Add the new note metadata entry
       updatedNotes[tempId] = {
         id: tempId,
@@ -366,7 +481,8 @@ export const App: React.FC = () => {
         date: dateStr,
         connections: finalConnections,
         clusterId: undefined, // Will be set by recalculateClusters
-        embedding // Store embedding in RAM metadata for immediate client calculations
+        embedding, // Store embedding in RAM metadata for immediate client calculations
+        graphId: targetGraphId
       } as any;
 
       // Update back-links (append this note ID to its connected notes' lists)
@@ -383,9 +499,12 @@ export const App: React.FC = () => {
       const updatedNotesWithClusters = recalculateClusters(updatedNotes);
 
       const updatedIndex: GraphIndex = {
+        ...index,
         notes: updatedNotesWithClusters,
         similarityThreshold: threshold,
-        clusters: {}
+        clusters: index.clusters || {},
+        graphs: availableGraphs,
+        activeGraphId: activeGraphId
       };
 
       // 6. Update local UI State INSTANTLY
@@ -653,15 +772,38 @@ export const App: React.FC = () => {
         
         {/* Left Side: Graph Visualization */}
         <div className={`graph-section ${activeTab === 'graph' ? 'active-mobile-view' : ''}`}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
               <Network size={28} style={{ color: "var(--primary)" }} />
               <h1 style={{ fontSize: "1.8rem", background: "linear-gradient(135deg, #f8fafc, #94a3b8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
                 Nexo
               </h1>
-              <span className="header-tag" style={{ fontSize: "0.8rem", color: "var(--text-muted)", background: "rgba(255,255,255,0.03)", padding: "0.2rem 0.6rem", borderRadius: "20px", border: "1px solid var(--border-color)" }}>
-                Nodos de Lectura Atómica
-              </span>
+              
+              {/* Graph Selector Dropdown */}
+              <select
+                value={activeGraphId}
+                onChange={(e) => handleSelectGraph(e.target.value)}
+                style={{
+                  background: "rgba(15, 23, 42, 0.8)",
+                  color: "var(--text-primary)",
+                  border: "1px solid var(--border-color)",
+                  borderRadius: "8px",
+                  padding: "0.3rem 0.6rem",
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                  outline: "none"
+                }}
+              >
+                <option value="all">🌐 Todos ({Object.keys(index.notes).length})</option>
+                {Object.values(availableGraphs).map((g) => {
+                  const count = Object.values(index.notes).filter(n => (n.graphId || "default") === g.id).length;
+                  return (
+                    <option key={g.id} value={g.id}>
+                      {g.id === "default" ? "📌 " : "❖ "}{g.name} ({count})
+                    </option>
+                  );
+                })}
+              </select>
             </div>
             {isAuthenticated && hasConfig && (
               <button 
@@ -682,7 +824,7 @@ export const App: React.FC = () => {
               </div>
             ) : (
               <KnowledgeGraph 
-                notes={index.notes} 
+                notes={filteredNotes} 
                 selectedNoteId={selectedNoteId}
                 onSelectNote={handleSelectNoteFromGraph}
                 clusters={index.clusters}
@@ -730,11 +872,9 @@ export const App: React.FC = () => {
               />
             )}
 
-
-
             {activeTab === "stats" && (
               <StatsPanel 
-                index={index} 
+                index={filteredIndex} 
                 driveService={driveService}
                 onSelectNote={handleSelectNoteFromGraph}
               />
@@ -744,6 +884,11 @@ export const App: React.FC = () => {
               <Settings 
                 driveService={driveService}
                 onConfigChanged={handleConfigChanged}
+                index={index}
+                activeGraphId={activeGraphId}
+                onSelectGraph={handleSelectGraph}
+                onCreateGraph={handleCreateGraph}
+                onDeleteGraph={handleDeleteGraph}
               />
             )}
           </div>

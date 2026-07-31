@@ -7,12 +7,21 @@ export interface NoteMetadata {
   connections: string[]; // List of connected note file IDs
   clusterId?: string;   // Assigned topic cluster ID
   embedding?: number[]; // Vector embedding for client distance/cluster calculations
+  graphId?: string;     // Assigned graph ID (defaults to "default")
+}
+
+export interface GraphDefinition {
+  id: string;
+  name: string;
+  date: string;
 }
 
 export interface GraphIndex {
   notes: { [fileId: string]: NoteMetadata };
   similarityThreshold: number;
   clusters?: { [clusterId: string]: string }; // Map of clusterId -> clusterName (from Gemini)
+  graphs?: { [graphId: string]: GraphDefinition }; // Map of graphId -> GraphDefinition
+  activeGraphId?: string;
 }
 
 const ROOT_FOLDER_NAME = "Nodos de Conocimiento";
@@ -31,12 +40,68 @@ export class GoogleDriveService {
   }
 
   constructor() {
-    // Load config and existing session from localStorage
-    //this.clientId = localStorage.getItem("nexo_google_client_id") || "";
-    this.clientId = '804370913602-0usktvrnitnpd9jf9a1pd6hj6bhdt5oo.apps.googleusercontent.com'
-    this.accessToken = localStorage.getItem("nexo_google_access_token");
-    this.tokenExpiry = parseInt(localStorage.getItem("nexo_google_token_expiry") || "0", 10);
+    this.clientId = '804370913602-0usktvrnitnpd9jf9a1pd6hj6bhdt5oo.apps.googleusercontent.com';
+    
+    // 1. Process token if arriving back from OAuth redirect URL (#access_token=...)
+    this.handleUrlHashToken();
+
+    // 2. Load stored token from localStorage if not set by redirect
+    if (!this.accessToken) {
+      this.accessToken = localStorage.getItem("nexo_google_access_token");
+      this.tokenExpiry = parseInt(localStorage.getItem("nexo_google_token_expiry") || "0", 10);
+    }
     this.folderId = localStorage.getItem("nexo_google_folder_id");
+  }
+
+  // Extract access token from URL fragment after OAuth redirect
+  public handleUrlHashToken(): boolean {
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token=")) {
+      const params = new URLSearchParams(hash.substring(1));
+      const token = params.get("access_token");
+      const expiresIn = params.get("expires_in");
+
+      if (token) {
+        this.accessToken = token;
+        this.tokenExpiry = Date.now() + (parseInt(expiresIn || "3600", 10) - 300) * 1000;
+
+        localStorage.setItem("nexo_google_access_token", this.accessToken);
+        localStorage.setItem("nexo_google_token_expiry", this.tokenExpiry.toString());
+        localStorage.setItem("nexo_was_connected", "true");
+
+        // Clean up URL hash without reloading page
+        try {
+          history.replaceState(null, "", window.location.pathname + window.location.search);
+        } catch (e) {}
+
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Detect mobile or standalone PWA environment
+  public isMobileOrPWA(): boolean {
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    return isStandalone || isMobile;
+  }
+
+  // Perform full-window OAuth redirect for mobile / standalone PWA to avoid stuck popup tabs
+  public loginWithRedirect() {
+    if (!this.clientId) {
+      throw new Error("Por favor, ingresa tu Google Client ID en Ajustes.");
+    }
+
+    const redirectUri = window.location.origin + window.location.pathname;
+    const scope = encodeURIComponent("https://www.googleapis.com/auth/drive.file");
+    const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+      this.clientId
+    )}&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&response_type=token&scope=${scope}&include_granted_scopes=true&prompt=select_account`;
+
+    window.location.href = oauthUrl;
   }
 
   // Update client config
@@ -58,8 +123,14 @@ export class GoogleDriveService {
     return !!this.accessToken && Date.now() < this.tokenExpiry;
   }
 
-  // Initialize and request Google login popup (interactive or silent)
+  // Initialize and request Google login (interactive or silent)
   public login(silent = false): Promise<string> {
+    // On mobile or standalone PWAs, interactive popups get stuck on postmessageRelay. Use direct window redirect!
+    if (!silent && this.isMobileOrPWA()) {
+      this.loginWithRedirect();
+      return new Promise(() => {}); // Window will navigate immediately
+    }
+
     return new Promise((resolve, reject) => {
       if (!this.clientId) {
         return reject(new Error("Por favor, ingresa tu Google Client ID en Ajustes."));
@@ -67,6 +138,10 @@ export class GoogleDriveService {
 
       // Check if GIS client is loaded in window
       if (!(window as any).google || !(window as any).google.accounts) {
+        if (!silent) {
+          this.loginWithRedirect();
+          return;
+        }
         return reject(new Error("El SDK de Google no se ha cargado. Verifica tu conexión."));
       }
 
